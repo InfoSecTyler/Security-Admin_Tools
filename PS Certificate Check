@@ -1,0 +1,43 @@
+# From SANS ISC 
+#
+# Generates a SHA256 hash of the certificate store and 
+# compares it with the previous execution.
+#
+# Note:
+# Do This with admin privs to create the new eventlog source:
+# New-EventLog –LogName Application –Source “CertificateStoreChecker”
+
+param(
+    [String]$outputPath="$env:USERPROFILE\certstore.hash"
+)
+
+# Compute the hash of a string
+Function Get-StringHash([String] $String,$HashName = "SHA256")
+{
+    $StringBuilder = New-Object System.Text.StringBuilder
+    [System.Security.Cryptography.HashAlgorithm]::Create($HashName).ComputeHash([System.Text.Encoding]::UTF8.GetBytes($String))|%{
+        [Void]$StringBuilder.Append($_.ToString("x2"))
+    }
+    $StringBuilder.ToString()
+}
+
+# Replace 'CERT:' with your prefered location (ex: CERT:\CurrentUser\root)
+# if you want to focus on specific certificates.
+$certStoreDump = Get-ChildItem -Recurse -Path "CERT:\" 
+$newSHA256 = Get-StringHash $certStoreDump
+$fileExists = Test-Path $outputPath
+if ($fileExists -eq $True) {
+    $oldSHA256 = Get-Content $outputPath
+
+    if($oldSHA256 -ne $newSHA256) {
+        Write-Host "[WARNING] Certificate store content changed since the last execution!"
+        Write-EventLog -LogName "Application" -Source "CertificateStoreChecker" -EventID 65501 -EntryType Information -Message "[WARNING] Certificate store content changed since the last execution!"
+
+    }
+}
+else {
+    Write-Host "[INFO] First execution, generating SHA256 file: $outputPath"
+    Write-EventLog -LogName "Application" -Source "CertificateStoreChecker" -EventID 65500 -EntryType Information -Message "[INFO] First execution, generating SHA256 file: $outputPath"
+
+}
+Out-File -FilePath $outputPath -InputObject $newSHA256
